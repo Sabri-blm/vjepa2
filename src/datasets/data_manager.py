@@ -56,6 +56,25 @@ def init_data(
             subset_file=subset_file,
         )
 
+    elif data.lower() == "geonpy":
+        from src.datasets.geonpy_loader import make_geonpy_loader
+        dataset, data_loader, dist_sampler = make_geonpy_loader(
+                                        root_path,
+                                        transform,
+                                        batch_size,
+                                        collator,
+                                        pin_mem,
+                                        num_workers,
+                                        world_size,
+                                        rank,
+                                        training,
+                                        drop_last,
+                                        persistent_workers,
+                                        log_dir,
+                                        datasets_weights,
+                                        deterministic,
+                                    )
+
     elif data.lower() == "videodataset":
         from src.datasets.video_dataset import make_videodataset
 
@@ -85,4 +104,4 @@ def init_data(
             log_dir=log_dir,
         )
 
-    return (data_loader, dist_sampler)
+    return (dataset, data_loader, dist_sampler)

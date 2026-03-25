@@ -10,6 +10,63 @@ import src.datasets.utils.video.transforms as video_transforms
 from src.datasets.utils.video.randerase import RandomErasing
 
 
+class GeoVideoTransformWithCrop:
+    """
+    Geospatial transform that applies a random resized crop
+    similar to V-JEPA-2, but safe for multi-channel tensors.
+    """
+
+    def __init__(self, crop_size=224, scale=(0.3, 1.0), ratio=(3/4, 4/3), motion_shift=False):
+        self.crop_size = crop_size
+        self.scale = scale
+        self.ratio = ratio
+
+        self.spatial_transform = (
+                video_transforms.random_resized_crop_with_shift if motion_shift else video_transforms.random_resized_crop
+            )
+
+    def __call__(self, buffer):
+        """
+        buffer: [T, H, W, C]
+        returns: [C, T, crop_size, crop_size]
+        """
+
+        # Convert to tensor
+        if not torch.is_tensor(buffer):
+            buffer = torch.tensor(buffer, dtype=torch.float32)
+        else:
+            buffer = buffer.float()
+
+        # Permute to [C, T, H, W]
+        buffer = buffer.permute(3, 0, 1, 2)
+
+        '''# Apply spatial crop (same crop for all frames)
+        C, T, H, W = buffer.shape
+
+        # Use torchvision's functional crop
+        i, j, h, w = transforms.RandomResizedCrop.get_params(
+            img=buffer[0],  # use first frame to compute crop
+            scale=self.scale,
+            ratio=self.ratio,
+        )
+
+        # Apply same crop to all frames
+        cropped = torch.zeros((C, T, self.crop_size, self.crop_size), dtype=buffer.dtype)
+        for t in range(T):
+            cropped[:, t] = transforms.functional.resized_crop(
+                buffer[:, t], i, j, h, w, size=(self.crop_size, self.crop_size)
+            )'''
+        buffer = self.spatial_transform(
+            images=buffer,
+            target_height=self.crop_size,
+            target_width=self.crop_size,
+            scale=self.scale,
+            ratio=self.ratio,
+        )
+
+        return buffer
+
+
 def make_transforms(
     random_horizontal_flip=True,
     random_resize_aspect_ratio=(3 / 4, 4 / 3),

@@ -26,7 +26,7 @@ import torch.multiprocessing as mp
 import torch.nn.functional as F
 from torch.nn.parallel import DistributedDataParallel
 
-from app.vjepa.transforms import make_transforms
+from app.vjepa.transforms import make_transforms, GeoVideoTransformWithCrop
 from app.vjepa.utils import init_opt, init_video_model, load_checkpoint
 from src.datasets.data_manager import init_data
 from src.masks.multiseq_multiblock3d import MaskCollator
@@ -101,7 +101,7 @@ def main(args, resume_preempt=False):
     cfgs_data = args.get("data")
     dataset_type = cfgs_data.get("dataset_type", "videodataset")
     dataset_paths = cfgs_data.get("datasets", [])
-    datasets_weights = cfgs_data.get("datasets_weights")
+    datasets_weights = cfgs_data.get("datasets_weights", None)
     dataset_fpcs = cfgs_data.get("dataset_fpcs")
     max_num_frames = max(dataset_fpcs)
     if datasets_weights is not None:
@@ -110,6 +110,7 @@ def main(args, resume_preempt=False):
     tubelet_size = cfgs_data.get("tubelet_size")
     fps = cfgs_data.get("fps")
     crop_size = cfgs_data.get("crop_size", 224)
+    in_chans = cfgs_data.get("in_chans", 3)
     patch_size = cfgs_data.get("patch_size")
     pin_mem = cfgs_data.get("pin_mem", False)
     num_workers = cfgs_data.get("num_workers", 1)
@@ -218,6 +219,7 @@ def main(args, resume_preempt=False):
         wide_silu=wide_silu,
         use_rope=use_rope,
         use_activation_checkpointing=use_activation_checkpointing,
+        in_chans=in_chans
     )
     target_encoder = copy.deepcopy(encoder)
 
@@ -235,7 +237,7 @@ def main(args, resume_preempt=False):
         patch_size=patch_size,
         tubelet_size=tubelet_size,
     )
-    transform = make_transforms(
+    '''transform = make_transforms(
         random_horizontal_flip=True,
         random_resize_aspect_ratio=ar_range,
         random_resize_scale=rr_scale,
@@ -243,10 +245,18 @@ def main(args, resume_preempt=False):
         auto_augment=use_aa,
         motion_shift=motion_shift,
         crop_size=crop_size,
+    )'''
+
+    transform = GeoVideoTransformWithCrop(
+        ratio=ar_range,
+        scale=rr_scale,
+        crop_size=crop_size,
+        motion_shift=motion_shift,
     )
 
+
     # -- init data-loaders/samplers
-    (unsupervised_loader, unsupervised_sampler) = init_data(
+    (dataset , unsupervised_loader, unsupervised_sampler) = init_data(
         data=dataset_type,
         root_path=dataset_paths,
         batch_size=batch_size,
@@ -303,7 +313,7 @@ def main(args, resume_preempt=False):
 
     start_epoch = 0
     # -- load training checkpoint
-    if load_model or os.path.exists(latest_path):
+    if load_model and os.path.exists(latest_path):
         (
             encoder,
             predictor,
@@ -386,6 +396,9 @@ def main(args, resume_preempt=False):
             while not iter_successful:
                 try:
                     sample = next(loader)
+                    '''print("Sampler length:", len(unsupervised_sampler))
+                    print("dataset length:", len(dataset))
+                    print(f"________________________________________{len(sample)} sample")'''
                     iter_successful = True
                 except StopIteration:
                     logger.info("Exhausted data loaders. Refreshing...")
@@ -415,6 +428,9 @@ def main(args, resume_preempt=False):
                 return all_clips, all_masks_enc, all_masks_pred
 
             clips, masks_enc, masks_pred = load_clips()
+            '''print(f"_______________________________________{len(clips)} clips")
+            print(f"_______________________________________{len(masks_enc)} mask_enc")
+            print(f"_______________________________________{len(masks_pred)} mask_pred")'''
             data_elapsed_time_ms = (time.time() - itr_start_time) * 1000.0
 
             if sync_gc and (itr + 1) % GARBAGE_COLLECT_ITR_FREQ == 0:
@@ -450,7 +466,9 @@ def main(args, resume_preempt=False):
                     return loss
 
                 # Step 1. Forward
-                with torch.cuda.amp.autocast(dtype=dtype, enabled=mixed_precision):
+                # torch.cuda.amp... is depricated in PyTorch 2.2+
+                #with torch.cuda.amp.autocast(dtype=dtype, enabled=mixed_precision):
+                with torch.amp.autocast('cuda', dtype=dtype, enabled=mixed_precision):
                     h = forward_target(clips)
                     z = forward_context(clips)
                     loss = loss_fn(z, h)  # jepa prediction loss

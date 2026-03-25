@@ -158,6 +158,7 @@ def init_video_model(
     use_pred_silu=False,
     wide_silu=False,
     use_activation_checkpointing=False,
+    in_chans=3
 ):
     encoder = video_vit.__dict__[model_name](
         img_size=crop_size,
@@ -170,6 +171,7 @@ def init_video_model(
         wide_silu=wide_silu,
         use_activation_checkpointing=use_activation_checkpointing,
         use_rope=use_rope,
+        in_chans=in_chans
     )
     encoder = MultiSeqWrapper(encoder)
     predictor = vit_pred.__dict__["vit_predictor"](
@@ -263,5 +265,7 @@ def init_opt(
         final_wd=final_wd,
         T_max=int(ipe_scale * num_epochs * iterations_per_epoch),
     )
-    scaler = torch.cuda.amp.GradScaler() if mixed_precision else None
+    # torch.cuda.GradScaler() is depricatedd in PyTorch2.2+ 
+    #scaler = torch.cuda.amp.GradScaler() if mixed_precision else None
+    scaler = torch.amp.GradScaler('cuda') if mixed_precision else None
     return optimizer, scaler, scheduler, wd_scheduler

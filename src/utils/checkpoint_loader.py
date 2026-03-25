@@ -24,7 +24,7 @@ def robust_checkpoint_loader(r_path: str, map_location: MAP_LOCATION = "cpu", ma
 
     while retries < max_retries:
         try:
-            return torch.load(r_path, map_location=map_location)
+            return torch.load(r_path, map_location=map_location, weights_only=True)
         except Exception as e:
             logger.warning(f"Encountered exception when loading checkpoint {e}")
             retries += 1
