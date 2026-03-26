@@ -34,6 +34,10 @@ from src.masks.utils import apply_masks
 from src.utils.distributed import init_distributed
 from src.utils.logging import AverageMeter, CSVLogger, get_logger, gpu_timer
 
+import wandb
+
+wandb.require("service") # prevents multiprocessing deadlocks
+
 # --
 log_timings = True
 log_freq = 10
@@ -354,6 +358,12 @@ def main(args, resume_preempt=False):
         }
         try:
             torch.save(save_dict, path)
+
+            wandb.log({f"checkpoint_epoch_{epoch}_path": path})
+            artifact = wandb.Artifact(f"checkpoint_epoch_{epoch}", type="model")
+            artifact.add_file(path)
+            wandb.log_artifact(artifact)
+
         except Exception as e:
             logger.info(f"Encountered exception when saving checkpoint: {e}")
 
@@ -396,9 +406,6 @@ def main(args, resume_preempt=False):
             while not iter_successful:
                 try:
                     sample = next(loader)
-                    '''print("Sampler length:", len(unsupervised_sampler))
-                    print("dataset length:", len(dataset))
-                    print(f"________________________________________{len(sample)} sample")'''
                     iter_successful = True
                 except StopIteration:
                     logger.info("Exhausted data loaders. Refreshing...")
@@ -428,9 +435,6 @@ def main(args, resume_preempt=False):
                 return all_clips, all_masks_enc, all_masks_pred
 
             clips, masks_enc, masks_pred = load_clips()
-            '''print(f"_______________________________________{len(clips)} clips")
-            print(f"_______________________________________{len(masks_enc)} mask_enc")
-            print(f"_______________________________________{len(masks_pred)} mask_pred")'''
             data_elapsed_time_ms = (time.time() - itr_start_time) * 1000.0
 
             if sync_gc and (itr + 1) % GARBAGE_COLLECT_ITR_FREQ == 0:
@@ -539,6 +543,21 @@ def main(args, resume_preempt=False):
                             data_elapsed_time_meter.avg,
                         )
                     )
+                    wandb.log({
+                        "epoch": epoch + 1,
+                        "iteration": itr,
+                        "loss": loss_meter.avg,
+                        "lr": _new_lr,
+                        "weight_decay": _new_wd,
+                        "gpu_mem_mb": torch.cuda.max_memory_allocated() / 1024.0**2,
+                        "iter_time_ms": iter_time_meter.avg,
+                        "gpu_time_ms": gpu_time_meter.avg,
+                        "data_time": data_elapsed_time_meter.avg,
+                        **{f"mask_ratio_fpc{fpc}": meter.avg for fpc, meter in mask_meters.items()},
+                    })
+
+
+            
 
             log_stats()
             assert not np.isnan(loss), "loss is nan"
@@ -552,3 +571,10 @@ def main(args, resume_preempt=False):
                 save_every_file = f"e{epoch}.pt"
                 save_every_path = os.path.join(folder, save_every_file)
                 save_checkpoint(epoch + 1, save_every_path)
+
+        # after loop
+        it = getattr(loader, "_iterator", None)
+        if it is not None:
+            it._shutdown_workers()
+
+        #wandb.finish()

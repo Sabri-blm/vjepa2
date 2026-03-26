@@ -9,9 +9,11 @@ import pprint
 from pathlib import Path
 
 import yaml
+import torch
 
 from app.scaffold import main as app_main
 from src.utils.distributed import init_distributed
+from src.utils.wandb_run_name import get_next_version
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--fname", type=str, help="name of config file to load", default="configs.yaml")
@@ -65,12 +67,32 @@ def process_main(rank, fname, world_size, devices):
         with open(params_path, "w") as f:
             yaml.dump(params, f)
 
+        base_name = params.get("exp_name")
+        version = get_next_version(base_name)
+
+        import wandb
+        wandb.init(
+            project="vjepa2-geospatial",
+            name=f"{base_name}-v{version}",
+            config=params
+        )
+
     # Init distributed (access to comm between GPUS on same machine)
     world_size, rank = init_distributed(rank_and_world_size=(rank, world_size))
     logger.info(f"Running... (rank: {rank}/{world_size})")
 
     # Launch the app with loaded config
     app_main(params["app"], args=params)
+
+    # 3. Barrier: wait for all ranks to finish
+    torch.distributed.barrier()
+    
+    # 4. Destroy process group
+    torch.distributed.destroy_process_group()
+
+    if rank == 0:
+        wandb.finish()
+
 
 
 if __name__ == "__main__":

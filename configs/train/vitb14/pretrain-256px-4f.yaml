@@ -4,6 +4,7 @@ tasks_per_node: 8
 cpus_per_task: 16
 mem_per_gpu: 220G
 folder: /home/jovyan/Sujet_speciale/GMT-7403-Sujet-special-Belmadoui_Mohamed_Sabri/submodules/vjepa2/logs/pretrain/16.8.vitb.256px.4f
+exp_name: pretrain_flood_4f
 data:
   dataset_type: geonpy
   datasets:
@@ -84,7 +85,7 @@ optimization:
   epochs: 10
   final_lr: 0.000525
   final_weight_decay: 0.04
-  ipe: 62 #300
+  ipe: 62 #62 #300
   ipe_scale: 1.25
   lr: 0.000525
   start_lr: 0.0001

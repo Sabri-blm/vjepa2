@@ -2,6 +2,8 @@ torch>=2
 torchvision
 tensorboard
 wandb
+weave
+dotenv
 iopath
 pyyaml
 numpy
