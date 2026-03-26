@@ -1,4 +1,4 @@
-import json
+import yaml
 from pathlib import Path
 
 def get_next_version(base_name, wandb_dir="wandb"):
@@ -7,14 +7,21 @@ def get_next_version(base_name, wandb_dir="wandb"):
         return 0
 
     count = 0
-    for run_dir in wandb_path.glob("run-*"):
-        meta = run_dir /  "files/wandb-metadata.json"
-        if meta.exists():
-            try:
-                data = json.loads(meta.read_text())
-                if data.get("runName") == base_name:
-                    count += 1
-            except Exception:
-                pass
+    for run_dir in sorted(wandb_path.glob("run-*")):
+        cfg = run_dir / "files/config.yaml"
+        if not cfg.exists():
+            continue
+
+        try:
+            with open(cfg, "r") as f:
+                params = yaml.safe_load(f)
+
+            exp = params.get("exp_name", {}).get("value")
+            if exp == base_name:
+                count += 1
+
+        except Exception:
+            # corrupted or partial config.yaml
+            continue
 
     return count
