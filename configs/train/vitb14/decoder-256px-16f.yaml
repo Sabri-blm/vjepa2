@@ -1,0 +1,66 @@
+app: decoder
+nodes: 16
+tasks_per_node: 8
+cpus_per_task: 16
+mem_per_gpu: 220G
+folder: /home/jovyan/Sujet_speciale/GMT-7403-Sujet-special-Belmadoui_Mohamed_Sabri/submodules/vjepa2/logs/decoder/16.8.vitb.256px.16f
+exp_name: decoder
+data:
+  dataset_type: geonpy
+  datasets:
+  - /home/jovyan/Sujet_speciale/Dataset_collection/Colorado_data/v_jepa_data/16f_v2 (no aspect)/normalized
+  datasets_weights:
+  batch_size: 8
+  crop_size: 256
+  in_chans: 22
+  patch_size: 16
+  dataset_fpcs:
+  - 16
+  tubelet_size: 2
+  num_clips: 1 # to devide the original video nbr_frame / num_clips
+  fps: 1
+  num_workers: 4
+  persistent_workers: true
+  pin_mem: true
+data_aug:
+  auto_augment: false
+  motion_shift: false
+  random_resize_aspect_ratio:
+  - 0.75
+  - 1.35
+  random_resize_scale:
+  - 0.3
+  - 1.0
+  reprob: 0.0
+loss:
+  loss_exp: 1.0
+meta:
+  dtype: bfloat16
+  eval_freq: 100
+  load_checkpoint: false # true
+  resume_checkpoint: null
+  load_predictor: false
+  pretrain_checkpoint: /home/jovyan/Sujet_speciale/GMT-7403-Sujet-special-Belmadoui_Mohamed_Sabri/submodules/vjepa2/logs/pretrain/16.8.vitb.256px.16f/latest.pt
+  context_encoder_key: target_encoder
+  target_encoder_key: target_encoder
+  save_every_freq: 50
+  seed: 239
+  use_sdpa: true
+model:
+  model_name: vit_base
+  decoder_depth: 6
+  decoder_embed_dim: 512
+  decoder_num_heads: 16
+  uniform_power: true
+  use_activation_checkpointing: true
+  use_rope: true
+optimization:
+  epochs: 10
+  final_lr: 0.000525
+  final_weight_decay: 0.04
+  ipe:  #62 #300
+  ipe_scale: 1.25
+  lr: 0.000525 # 0.001575
+  start_lr: 0.0001
+  warmup: 40
+  weight_decay: 0.04
