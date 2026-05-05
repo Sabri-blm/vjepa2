@@ -33,3 +33,7 @@ configs/locallogs/
 logs/
 .env
 wandb/
+notebooks/energy_landscape_example.ipynb
+notebooks/vjepa2_demo.ipynb
+samples/*
+notebooks/decoder_progress.mp4

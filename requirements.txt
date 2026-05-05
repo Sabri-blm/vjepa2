@@ -1,5 +1,6 @@
 torch>=2
 torchvision
+torchmetrics
 tensorboard
 wandb
 weave

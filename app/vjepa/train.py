@@ -19,6 +19,7 @@ import copy
 import gc
 import random
 import time
+from tqdm import tqdm
 
 import numpy as np
 import torch
@@ -107,7 +108,9 @@ def main(args, resume_preempt=False):
     dataset_paths = cfgs_data.get("datasets", [])
     datasets_weights = cfgs_data.get("datasets_weights", None)
     dataset_fpcs = cfgs_data.get("dataset_fpcs")
+    num_clips = cfgs_data.get("num_clips", 1)
     max_num_frames = max(dataset_fpcs)
+    
     if datasets_weights is not None:
         assert len(datasets_weights) == len(dataset_paths), "Must have one sampling weight specified for each dataset"
     batch_size = cfgs_data.get("batch_size")
@@ -276,6 +279,7 @@ def main(args, resume_preempt=False):
         num_workers=num_workers,
         pin_mem=pin_mem,
         log_dir=None,
+        num_clips=num_clips
     )
     try:
         _dlen = len(unsupervised_loader)
@@ -389,7 +393,7 @@ def main(args, resume_preempt=False):
         gc.collect()
 
     # -- TRAINING LOOP
-    for epoch in range(start_epoch, num_epochs):
+    for epoch in tqdm(range(start_epoch, num_epochs), total=num_epochs, desc="Training"):
         logger.info("Epoch %d" % (epoch + 1))
 
         loss_meter = AverageMeter()
@@ -429,7 +433,7 @@ def main(args, resume_preempt=False):
                 all_clips, all_masks_enc, all_masks_pred = [], [], []
                 for fpc_sample in sample:
                     udata, masks_enc, masks_pred = fpc_sample
-                    all_clips += [udata[0][0].to(device, non_blocking=True)]
+                    all_clips += [udata[0][0].to(device, non_blocking=True)] # [B, C, T, H, W]
                     all_masks_enc += [[m.to(device, non_blocking=True) for m in masks_enc]]
                     all_masks_pred += [[m.to(device, non_blocking=True) for m in masks_pred]]
                 return all_clips, all_masks_enc, all_masks_pred

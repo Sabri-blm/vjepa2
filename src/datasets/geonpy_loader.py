@@ -28,12 +28,21 @@ def make_geonpy_loader(
     log_dir=None,
     datasets_weights=None,
     deterministic=True,
-
+    dataset_fpcs=None,
+    num_clips=1,
+    decoding=False,
+    only_flood=True,
+    c=2
 ):
     dataset = GeoNPYDataset(
-        root=root_path, 
+        root=root_path,
         train=training,
         transform=transform,
+        dataset_fpcs=dataset_fpcs,
+        num_clips=num_clips,
+        decoding=decoding,
+        only_flood=only_flood,
+        c=c
     )
 
     log_dir = pathlib.Path(log_dir) if log_dir else None
@@ -88,15 +97,25 @@ class GeoNPYDataset(Dataset):
     Each .npy file is one sample.
     """
 
-    def __init__(self, 
-                 root, 
+    def __init__(self,
+                 root,
                  train=True,
                  transform=None,
+                 dataset_fpcs=None,
+                 decoding=False,
+                 only_flood=True,
+                 c=2,
+                 num_clips=1,
                  val_ratio=0.05,   # 5% validation split
                  seed=0            # deterministic split
                 ):
+        self.max_frames = max(dataset_fpcs)
         self.root = root[0]
         self.transform = transform
+        self.num_clips = num_clips
+        self.decoding = decoding
+        self.only_flood = only_flood
+        self.channels = c
 
         # list all .npy files
         all_files = sorted([
@@ -107,15 +126,15 @@ class GeoNPYDataset(Dataset):
 
         if len(all_files) == 0:
             raise RuntimeError(f"No .npy files found in {self.root}")
-        # deterministic split 
-        rng = np.random.RandomState(seed) 
+        # deterministic split
+        rng = np.random.RandomState(seed)
         indices = np.arange(len(all_files))
-        rng.shuffle(indices) 
-        
+        rng.shuffle(indices)
+
         split = int(len(indices) * (1 - val_ratio))
-        train_idx = indices[:split] 
-        val_idx = indices[split:] 
-        
+        train_idx = indices[:split]
+        val_idx = indices[split:]
+
         self.files = [all_files[i] for i in (train_idx if train else val_idx)]
 
     def __len__(self):
@@ -124,30 +143,53 @@ class GeoNPYDataset(Dataset):
     def __getitem__(self, idx):
         path = self.files[idx]
 
-        # load numpy array (C, H, W)
+        # load numpy array [T, H, W, C]
         arr = np.load(path)
 
-        assert arr.shape[0] == 4, f"The first indice is suppose to be 4 but got{arr.shape[0]}"
+        #print("arr shape: ", arr.shape)
 
-        # arr is [C, T, H, W]
-        #arr = np.transpose(arr, (0, 2, 3, 1))   # → [T, H, W, C]
+        assert arr.shape[0] == self.max_frames, f"The first indice is suppose to be 4 but got{arr.shape[0]}"
 
-        #print("-----------------------------------1", arr.shape)
-        # convert to torch tensor
-        img = torch.from_numpy(arr).float()
+        clip_indices = [torch.arange(arr.shape[0], dtype=torch.long)]
 
-        # apply I-JEPA transforms (expects CHW tensor)
+        buffer = torch.from_numpy(arr).float()
+        #print("before transform: ", len(buffer), buffer[0].shape)
+        #print("before transform: ", len(clip_indices))
+
         if self.transform is not None:
-            img = self.transform(img)
+            buffer = [self.transform(buffer)] # [self.transform(clip) for clip in buffer]
 
+        #print("after transform: ", len(buffer), buffer[0].shape)
+        #print("after transform: ", len(clip_indices))
 
-        T = img.shape[1]
-        # img is (C, T, H, W)
-        #img = img.permute(1, 0, 2, 3)   # → (T, C, H, W)
+        if self.decoding:
+            flood_maps = buffer[0][0, ...].unsqueeze(0) if self.only_flood else buffer[0][:self.channels, ...]
+            #print(buffer[0].shape, flood_maps.shape)
 
-        #print("-----------------------------------2", img.shape)
-        #clip_indices = [list(range(T))]
-        clip_indices = [torch.arange(T, dtype=torch.long)]
-        # I-JEPA ignores labels → return dummy target
-        return [img], 0, clip_indices
+            return buffer[0], flood_maps
         
+        return buffer[0], 0, clip_indices
+
+    '''def __getitem__(self, idx):
+        path = self.files[idx]
+
+        # 1) load once
+        arr = np.load(path)          # (T, H, W, C)
+        
+        # 2) tensor + layout once
+        arr_t = torch.from_numpy(arr).permute(3, 0, 1, 2)  # (C, T, H, W)
+
+        C, T, H, W = arr_t.shape  # assuming (T, ...)
+        clip_len = T // self.num_clips
+        
+        # 3) reshape into clips without Python loops
+        clips = arr_t.reshape(self.num_clips, C, clip_len, H, W)  # (B, C, T, H, W)
+        
+        # 4) single transform call on the whole batch
+        # apply transform per clip
+        clips = torch.stack([self.transform(c) for c in clips], dim=0)
+
+        clip_indices = [torch.arange(i * clip_len, (i + 1) * clip_len, dtype=torch.long) for i in range(self.num_clips)]
+
+        return clips, 0, clip_indices'''
+

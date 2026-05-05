@@ -37,6 +37,9 @@ def init_data(
     persistent_workers=False,
     deterministic=True,
     log_dir=None,
+    decoding=False,
+    only_flood=False,
+    c=2
 ):
     if data.lower() == "imagenet":
         from src.datasets.imagenet1k import make_imagenet1k
@@ -73,6 +76,11 @@ def init_data(
                                         log_dir,
                                         datasets_weights,
                                         deterministic,
+                                        dataset_fpcs,
+                                        num_clips,
+                                        decoding,
+                                        only_flood,
+                                        c=c
                                     )
 
     elif data.lower() == "videodataset":

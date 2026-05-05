@@ -40,7 +40,7 @@ class GeoVideoTransformWithCrop:
         # Permute to [C, T, H, W]
         buffer = buffer.permute(3, 0, 1, 2)
 
-        '''# Apply spatial crop (same crop for all frames)
+        """# Apply spatial crop (same crop for all frames)
         C, T, H, W = buffer.shape
 
         # Use torchvision's functional crop
@@ -55,7 +55,7 @@ class GeoVideoTransformWithCrop:
         for t in range(T):
             cropped[:, t] = transforms.functional.resized_crop(
                 buffer[:, t], i, j, h, w, size=(self.crop_size, self.crop_size)
-            )'''
+            )"""
         buffer = self.spatial_transform(
             images=buffer,
             target_height=self.crop_size,
@@ -65,6 +65,31 @@ class GeoVideoTransformWithCrop:
         )
 
         return buffer
+
+        
+    '''def __call__(self, buffer):
+        """
+        buffer: (C, T, H, W) or (B, C, T, H, W)
+        returns: same shape but cropped to (crop_size, crop_size)
+        """
+
+        # Ensure tensor
+        if not torch.is_tensor(buffer):
+            buffer = torch.as_tensor(buffer, dtype=torch.float32)
+        else:
+            buffer = buffer.float()
+
+        # Apply crop ONCE per clip batch
+        # video_transforms expects (B, C, T, H, W)
+        buffer = self.spatial_transform(
+            images=buffer,
+            target_height=self.crop_size,
+            target_width=self.crop_size,
+            scale=self.scale,
+            ratio=self.ratio,
+        )
+
+        return buffer'''
 
 
 def make_transforms(

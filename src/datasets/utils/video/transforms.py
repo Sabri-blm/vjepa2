@@ -548,6 +548,7 @@ def random_resized_crop_with_shift(
     target_width,
     scale=(0.8, 1.0),
     ratio=(3.0 / 4.0, 4.0 / 3.0),
+    in_chans=3
 ):
     """
     This is similar to random_resized_crop. However, it samples two different
@@ -561,6 +562,7 @@ def random_resized_crop_with_shift(
         scale: Scale range of Inception-style area based random resizing.
         ratio: Aspect ratio range of Inception-style area based random resizing.
     """
+    c = images.shape[0]
     t = images.shape[1]
     height = images.shape[2]
     width = images.shape[3]
@@ -571,7 +573,7 @@ def random_resized_crop_with_shift(
     j_s = [int(i) for i in torch.linspace(j, j_, steps=t).tolist()]
     h_s = [int(i) for i in torch.linspace(h, h_, steps=t).tolist()]
     w_s = [int(i) for i in torch.linspace(w, w_, steps=t).tolist()]
-    out = torch.zeros((3, t, target_height, target_width))
+    out = torch.zeros((c, t, target_height, target_width))
     for ind in range(t):
         out[:, ind : ind + 1, :, :] = torch.nn.functional.interpolate(
             images[
