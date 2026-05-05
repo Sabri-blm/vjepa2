@@ -81,17 +81,114 @@ def process_main(rank, fname, world_size, devices):
     world_size, rank = init_distributed(rank_and_world_size=(rank, world_size))
     logger.info(f"Running... (rank: {rank}/{world_size})")
 
-    # Launch the app with loaded config
-    app_main(params["app"], args=params)
+    # Track run info for cleanup
+    wandb_run = wandb.run if rank == 0 else None
+    wandb_dir = wandb_run.dir if wandb_run is not None else None
+    wandb_run_id = wandb_run.id if wandb_run is not None else None
+    wandb_project = wandb_run.project if wandb_run is not None else None
+    wandb_entity = wandb_run.entity if wandb_run is not None else None
 
-    # 3. Barrier: wait for all ranks to finish
-    torch.distributed.barrier()
-    
-    # 4. Destroy process group
-    torch.distributed.destroy_process_group()
+    crashed = False
 
-    if rank == 0:
-        wandb.finish()
+    try:
+        # Launch the app with loaded config
+        app_main(params["app"], args=params)
+
+        # Barrier: wait for all ranks to finish
+        torch.distributed.barrier()
+    except KeyboardInterrupt:
+        crashed = True
+        logger.error(f"KeyboardInterrupt received on rank {rank}. Shutting down cleanly...")
+
+        # -----------------------------
+        # 1. DELETE W&B RUN (rank 0 only)
+        # -----------------------------
+        if rank == 0 and wandb_run is not None:
+            logger.error("Ctrl+C detected — deleting W&B run...")
+
+            try:
+                api = wandb.Api()
+                run = api.run(f"{wandb_entity}/{wandb_project}/{wandb_run_id}")
+                run.delete()
+                logger.error("Remote W&B run deleted.")
+            except Exception as e2:
+                logger.error(f"Failed to delete remote W&B run: {e2}")
+
+            try:
+                import shutil
+                shutil.rmtree(wandb_dir, ignore_errors=True)
+                logger.error("Local W&B run directory deleted.")
+            except Exception as e3:
+                logger.error(f"Failed to delete local W&B directory: {e3}")
+
+        # -----------------------------
+        # 3. KILL ALL CHILD PROCESSES
+        # -----------------------------
+        kill_children(logger)
+        # -----------------------------
+        # 4. EXIT CLEANLY
+        # -----------------------------
+        logger.error("Exiting due to Ctrl+C.")
+        return  # IMPORTANT: do NOT re-raise
+
+    except Exception as e:
+        crashed = True
+        logger.error(f"Training crashed on rank {rank}: {e}", exc_info=True)
+
+        if rank == 0 and wandb_run is not None:
+            logger.error("Deleting W&B run due to crash...")
+
+            try:
+                # Delete remote run
+                api = wandb.Api()
+                run = api.run(f"{wandb_entity}/{wandb_project}/{wandb_run_id}")
+                run.delete()
+                logger.error("Remote W&B run deleted.")
+            except Exception as e2:
+                logger.error(f"Failed to delete remote W&B run: {e2}")
+
+            try:
+                # Delete local run directory
+                import shutil
+                shutil.rmtree(wandb_dir, ignore_errors=True)
+                logger.error("Local W&B run directory deleted.")
+            except Exception as e3:
+                logger.error(f"Failed to delete local W&B directory: {e3}")
+
+        # Kill all child processes
+        kill_children(logger)
+
+        raise # re-raise to exit with error
+
+    finally:
+        # Destroy process group
+
+        if rank == 0:
+            if not crashed:
+                wandb.finish()
+            else:
+                logger.error("W&B run was already cleaned up due to crash.")
+
+        try:
+            torch.distributed.destroy_process_group()
+        except:
+            pass
+
+        kill_children(logger)
+
+def kill_children(logger):
+    import psutil, os
+    try:
+        parent = psutil.Process(os.getpid())
+        for child in parent.children(recursive=True):
+            try:
+                child.kill()
+            except Exception:
+                pass
+        logger.error("All subprocesses killed.")
+    except Exception as e:
+        logger.error(f"Failed to kill subprocesses: {e}")
+
 
 
 
